@@ -136,3 +136,51 @@ export const Pagination = ({ currentPage, totalPages, onPageChange }) => {
         </div>
     );
 };
+
+// Star Rating Display Component
+export const StarRating = ({ rating, size = 'md', showCount = false, count = 0 }) => {
+    const sizes = {
+        sm: 'w-4 h-4',
+        md: 'w-5 h-5',
+        lg: 'w-6 h-6',
+    };
+
+    return (
+        <div className="flex items-center gap-1">
+            <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                    <span key={star} className={`${sizes[size]} ${star <= Math.floor(rating) ? 'text-yellow-400' : 'text-gray-300'}`}>
+                        ★
+                    </span>
+                ))}
+            </div>
+            {showCount && <span className="text-sm text-gray-600">({count})</span>}
+        </div>
+    );
+};
+
+// Player Card with Rating Component
+export const PlayerCard = ({ player, showRating = true, size = 'md' }) => {
+    const sizes = {
+        sm: 'p-3',
+        md: 'p-4',
+        lg: 'p-6',
+    };
+
+    return (
+        <div className={`bg-white rounded-lg border border-gray-200 ${sizes[size]} flex items-start gap-4`}>
+            <div className="flex-1">
+                <h4 className="font-medium text-gray-800">
+                    {player.firstName} {player.lastName}
+                </h4>
+                {showRating && player.rating !== undefined && (
+                    <div className="flex items-center gap-2 mt-2">
+                        <StarRating rating={player.rating} size="sm" />
+                        <span className="text-xs text-gray-600">{player.rating}/5</span>
+                        {player.totalReviews && <span className="text-xs text-gray-500">({player.totalReviews})</span>}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};

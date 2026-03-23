@@ -1,39 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useMatches } from '../hooks/useMatches';
-import { Card, Button, Spinner, Badge } from '../components/UI';
-import { MapPin, Users, Calendar } from 'lucide-react';
+import { useMatchGroups } from '../hooks/useMatchGroups';
+import { useAuth } from '../context/AuthContext';
+import { Card, Button, Spinner, Badge, StarRating } from '../components/UI';
+import { RatingModal } from '../components/RatingModal';
+import { useNotification } from '../context/NotificationContext';
+import { MapPin, Users, Calendar, Star, AlertCircle } from 'lucide-react';
 
-export const HomePage = () => {
-    const [filters, setFilters] = useState({
-        sport: '',
-        city: '',
-        status: 'upcoming',
-        page: 1,
-        limit: 10,
-    });
-
-    const { matches, loading, pagination } = useMatches(filters);
-
-    const sports = ['cricket', 'football', 'badminton', 'basketball', 'tennis', 'volleyball'];
-
-    const handleFilterChange = (e) => {
-        const { name, value } = e.target;
-        setFilters((prev) => ({
-            ...prev,
-            [name]: value,
-            page: 1, // Reset to first page when filter changes
-        }));
-    };
-
-    const handlePageChange = (newPage) => {
-        setFilters((prev) => ({
-            ...prev,
-            page: newPage,
-        }));
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
+const MatchCard = ({ match, onRateClick, isUserMatch, isCompleted }) => {
     const formatDate = (dateString) => {
         const date = new Date(dateString);
         return date.toLocaleDateString('en-US', {
@@ -43,6 +17,169 @@ export const HomePage = () => {
             hour: '2-digit',
             minute: '2-digit',
         });
+    };
+
+    const getStatusColor = (status) => {
+        switch (status) {
+            case 'completed':
+                return 'bg-green-100 text-green-800';
+            case 'ongoing':
+                return 'bg-blue-100 text-blue-800';
+            case 'cancelled':
+                return 'bg-red-100 text-red-800';
+            case 'upcoming':
+            default:
+                return 'bg-yellow-100 text-yellow-800';
+        }
+    };
+
+    const getStatusEmoji = (status) => {
+        switch (status) {
+            case 'completed':
+                return '🔵';
+            case 'ongoing':
+                return '🟠';
+            case 'cancelled':
+                return '🔴';
+            case 'upcoming':
+            default:
+                return '🟢';
+        }
+    };
+
+    return (
+        <Card className="h-full hover:shadow-lg transition">
+            {/* Header */}
+            <div className="mb-3 flex items-start justify-between">
+                <div>
+                    <h3 className="text-lg font-bold text-gray-800 mb-1">{match.title}</h3>
+                    <div className="flex gap-2 flex-wrap">
+                        <Badge variant="primary">{match.sport}</Badge>
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(match.status)}`}>
+                            {getStatusEmoji(match.status)} {match.status.charAt(0).toUpperCase() + match.status.slice(1)}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Details */}
+            <div className="space-y-2 mb-4 text-gray-600">
+                <div className="flex items-center gap-2">
+                    <Calendar size={16} />
+                    <span className="text-sm">{formatDate(match.matchDate)}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <MapPin size={16} />
+                    <span className="text-sm">{match.location.city}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Users size={16} />
+                    <span className="text-sm">
+                        {match.playersJoined.length}/{match.playersNeeded} players
+                    </span>
+                </div>
+            </div>
+
+            {/* Host Info */}
+            <div className="border-t pt-3 mb-3">
+                <p className="text-sm text-gray-600 mb-2">
+                    Hosted by{' '}
+                    <Link
+                        to={`/player/${match.hostedBy._id}`}
+                        className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                        {match.hostedBy.firstName} {match.hostedBy.lastName}
+                    </Link>
+                </p>
+                {match.hostedBy.rating && (
+                    <div className="flex items-center gap-2">
+                        <StarRating rating={match.hostedBy.rating} size="sm" />
+                        <span className="text-xs text-gray-600">{match.hostedBy.rating}/5</span>
+                        {match.hostedBy.totalReviews && (
+                            <span className="text-xs text-gray-500">({match.hostedBy.totalReviews} reviews)</span>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-2">
+                <Link to={`/matches/${match._id}`} className="block">
+                    <Button variant="primary" className="w-full text-sm">
+                        View Details
+                    </Button>
+                </Link>
+                {isCompleted && isUserMatch && onRateClick && (
+                    <Button
+                        variant="secondary"
+                        onClick={() => onRateClick(match._id)}
+                        className="w-full text-sm flex items-center justify-center gap-2"
+                    >
+                        <Star size={14} />
+                        Rate Players
+                    </Button>
+                )}
+            </div>
+        </Card>
+    );
+};
+
+export const HomePage = () => {
+    const { user } = useAuth();
+    const { addNotification } = useNotification();
+    const [filters, setFilters] = useState({
+        sport: '',
+        city: '',
+    });
+    const [showRatingModal, setShowRatingModal] = useState(false);
+    const [selectedMatchId, setSelectedMatchId] = useState(null);
+
+    const { upcomingMatches, ongoingMatches, completedMatches, cancelledMatches, loading, error } = useMatchGroups(filters);
+
+    const sports = ['cricket', 'football', 'badminton', 'basketball', 'tennis', 'volleyball'];
+
+    const handleFilterChange = (e) => {
+        const { name, value } = e.target;
+        setFilters((prev) => ({
+            ...prev,
+            [name]: value,
+        }));
+    };
+
+    const handleRateClick = (matchId) => {
+        setSelectedMatchId(matchId);
+        setShowRatingModal(true);
+    };
+
+    const isUserInMatch = (match) => {
+        return match.playersJoined.some(p => p.player._id === user?._id) ||
+            match.hostedBy._id === user?._id;
+    };
+
+    const MatchSection = ({ title, matches, status }) => {
+        if (matches.length === 0) return null;
+
+        return (
+            <div className="mb-12">
+                <div className="flex items-center gap-3 mb-6">
+                    <h2 className="text-2xl font-bold text-gray-800">{title}</h2>
+                    <span className="bg-gray-200 text-gray-700 px-3 py-1 rounded-full text-sm font-medium">
+                        {matches.length}
+                    </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {matches.map((match) => (
+                        <MatchCard
+                            key={match._id}
+                            match={match}
+                            isUserMatch={isUserInMatch(match)}
+                            isCompleted={status === 'completed'}
+                            onRateClick={status === 'completed' ? handleRateClick : null}
+                        />
+                    ))}
+                </div>
+            </div>
+        );
     };
 
     return (
@@ -59,7 +196,12 @@ export const HomePage = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">Sport</label>
-                            <select name="sport" value={filters.sport} onChange={handleFilterChange} className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <select
+                                name="sport"
+                                value={filters.sport}
+                                onChange={handleFilterChange}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            >
                                 <option value="">All Sports</option>
                                 {sports.map((sport) => (
                                     <option key={sport} value={sport}>
@@ -71,7 +213,14 @@ export const HomePage = () => {
 
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-2">City</label>
-                            <input type="text" name="city" value={filters.city} onChange={handleFilterChange} placeholder="Enter city" className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            <input
+                                type="text"
+                                name="city"
+                                value={filters.city}
+                                onChange={handleFilterChange}
+                                placeholder="Enter city"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
                         </div>
 
                         <div className="flex items-end">
@@ -84,12 +233,19 @@ export const HomePage = () => {
                     </div>
                 </Card>
 
-                {/* Matches List */}
+                {/* Loading State */}
                 {loading ? (
                     <div className="flex justify-center items-center h-64">
                         <Spinner size="lg" />
                     </div>
-                ) : matches.length === 0 ? (
+                ) : error ? (
+                    <Card className="bg-red-50 border border-red-200 p-6 text-center">
+                        <div className="flex items-center justify-center gap-2 text-red-800 mb-2">
+                            <AlertCircle size={20} />
+                            <p className="font-medium">{error}</p>
+                        </div>
+                    </Card>
+                ) : (upcomingMatches.length === 0 && ongoingMatches.length === 0 && completedMatches.length === 0 && cancelledMatches.length === 0) ? (
                     <Card className="text-center py-12">
                         <p className="text-gray-600 mb-4">No matches found</p>
                         <Link to="/create-match">
@@ -98,70 +254,55 @@ export const HomePage = () => {
                     </Card>
                 ) : (
                     <>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
-                            {matches.map((match) => (
-                                <Link key={match._id} to={`/matches/${match._id}`}>
-                                    <Card className="h-full hover:shadow-lg transition cursor-pointer">
-                                        {/* Header */}
-                                        <div className="mb-3 flex items-start justify-between">
-                                            <div>
-                                                <h3 className="text-lg font-bold text-gray-800 mb-1">{match.title}</h3>
-                                                <Badge variant="primary">{match.sport}</Badge>
-                                            </div>
-                                            <Badge variant={match.status === 'upcoming' ? 'success' : 'warning'}>{match.status}</Badge>
-                                        </div>
+                        {/* Upcoming Matches Section */}
+                        <MatchSection
+                            title="🟢 Upcoming Matches"
+                            matches={upcomingMatches}
+                            status="upcoming"
+                        />
 
-                                        {/* Details */}
-                                        <div className="space-y-2 mb-4 text-gray-600">
-                                            <div className="flex items-center gap-2">
-                                                <Calendar size={16} />
-                                                <span className="text-sm">{formatDate(match.matchDate)}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <MapPin size={16} />
-                                                <span className="text-sm">{match.location.city}</span>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <Users size={16} />
-                                                <span className="text-sm">
-                                                    {match.playersJoined.length}/{match.playersNeeded} players
-                                                </span>
-                                            </div>
-                                        </div>
+                        {/* Ongoing Matches Section */}
+                        {ongoingMatches.length > 0 && (
+                            <MatchSection
+                                title="🟡 Ongoing Matches"
+                                matches={ongoingMatches}
+                                status="ongoing"
+                            />
+                        )}
 
-                                        {/* Host Info */}
-                                        <div className="border-t pt-3 mb-3">
-                                            <p className="text-sm text-gray-600">
-                                                Hosted by <span className="font-medium">{match.hostedBy.firstName} {match.hostedBy.lastName}</span>
-                                            </p>
-                                        </div>
+                        {/* Completed Matches Section */}
+                        {completedMatches.length > 0 && (
+                            <MatchSection
+                                title="🔵 Completed Matches"
+                                matches={completedMatches}
+                                status="completed"
+                            />
+                        )}
 
-                                        {/* Action Button */}
-                                        <Button variant="primary" className="w-full text-sm">
-                                            View Details
-                                        </Button>
-                                    </Card>
-                                </Link>
-                            ))}
-                        </div>
-
-                        {/* Pagination */}
-                        {pagination.pages > 1 && (
-                            <div className="flex justify-center gap-2">
-                                <Button onClick={() => handlePageChange(filters.page - 1)} disabled={filters.page === 1} variant="secondary">
-                                    Previous
-                                </Button>
-                                <span className="px-4 py-2 text-gray-700">
-                                    Page {filters.page} of {pagination.pages}
-                                </span>
-                                <Button onClick={() => handlePageChange(filters.page + 1)} disabled={filters.page === pagination.pages} variant="secondary">
-                                    Next
-                                </Button>
-                            </div>
+                        {/* Cancelled Matches Section */}
+                        {cancelledMatches.length > 0 && (
+                            <MatchSection
+                                title="🔴 Cancelled Matches"
+                                matches={cancelledMatches}
+                                status="cancelled"
+                            />
                         )}
                     </>
                 )}
             </div>
+
+            {/* Rating Modal will be added later when users click "Rate Players" */}
+            {showRatingModal && (
+                <RatingModal
+                    matchId={selectedMatchId}
+                    isOpen={showRatingModal}
+                    onClose={() => {
+                        setShowRatingModal(false);
+                        setSelectedMatchId(null);
+                    }}
+                />
+            )}
         </div>
     );
 };
+

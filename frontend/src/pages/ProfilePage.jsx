@@ -5,7 +5,7 @@ import { Card, Button, Input, Select, Alert, Spinner } from '../components/UI';
 import { Mail, Phone, MapPin, Trophy, Upload } from 'lucide-react';
 
 export const ProfilePage = () => {
-    const { user, updateProfile } = useAuth();
+    const { user, updateProfile, refreshUser } = useAuth();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
@@ -36,6 +36,14 @@ export const ProfilePage = () => {
         { value: 'advanced', label: 'Advanced' },
         { value: 'professional', label: 'Professional' },
     ];
+
+    // Refresh user data on profile page mount to get latest rating
+    useEffect(() => {
+        if (user?._id) {
+            refreshUser().catch(err => console.error('Failed to refresh user on profile load:', err));
+        }
+        // Only run once on mount
+    }, []);
 
     useEffect(() => {
         if (user) {
@@ -198,8 +206,12 @@ export const ProfilePage = () => {
                                     <span className="text-xl">⭐</span>
                                     <div>
                                         <p className="text-gray-600">Rating</p>
-                                        <p className="text-2xl font-bold text-yellow-600">{user.rating.toFixed(1)}</p>
+                                        <p className="text-2xl font-bold text-yellow-600">{(user.rating || 0).toFixed(1)}</p>
                                     </div>
+                                </div>
+                                <div className="bg-purple-50 p-3 rounded-lg">
+                                    <p className="text-gray-600">Total Reviews</p>
+                                    <p className="text-2xl font-bold text-purple-600">{user.totalReviews || 0}</p>
                                 </div>
                             </div>
                         </div>
@@ -329,6 +341,42 @@ export const ProfilePage = () => {
                                         </p>
                                     </div>
                                 </div>
+                            </div>
+                        )}
+                    </Card>
+                </div>
+
+                {/* Match History Section */}
+                <div className="mt-8">
+                    <Card>
+                        <h2 className="text-2xl font-bold text-gray-800 mb-6">📊 Match History</h2>
+
+                        {user.matchesCompleted > 0 ? (
+                            <div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                                    <div className="bg-blue-50 p-4 rounded-lg text-center">
+                                        <p className="text-gray-600 text-sm">Total Matches</p>
+                                        <p className="text-3xl font-bold text-blue-600">{(user.matchesHosted || 0) + (user.matchesJoined || 0)}</p>
+                                    </div>
+                                    <div className="bg-green-50 p-4 rounded-lg text-center">
+                                        <p className="text-gray-600 text-sm">Completed Matches</p>
+                                        <p className="text-3xl font-bold text-green-600">{user.matchesCompleted || 0}</p>
+                                    </div>
+                                    <div className="bg-yellow-50 p-4 rounded-lg text-center">
+                                        <p className="text-gray-600 text-sm">Avg. Rating</p>
+                                        <p className="text-3xl font-bold text-yellow-600">⭐ {user.rating.toFixed(1)}</p>
+                                    </div>
+                                </div>
+
+                                <div className="text-center text-gray-600 text-sm py-4 bg-gray-50 rounded-lg">
+                                    <p>✅ Your completed matches are displayed on the home page in the "Completed Matches" section</p>
+                                    <p className="mt-2">Rate your teammates to build your reputation!</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="text-center py-8 text-gray-500">
+                                <p>No completed matches yet</p>
+                                <p className="text-sm mt-2">Join or create matches to build your match history</p>
                             </div>
                         )}
                     </Card>

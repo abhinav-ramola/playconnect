@@ -43,7 +43,6 @@ export const authAPI = {
 };
 
 // Match APIs
-// Match APIs
 export const matchAPI = {
     createMatch: (data) => api.post('/matches', data),
     getAllMatches: (params) => api.get('/matches', { params }),
@@ -51,10 +50,19 @@ export const matchAPI = {
     updateMatch: (matchId, data) => api.put(`/matches/${matchId}`, data),
     joinMatch: (matchId) => api.post(`/matches/${matchId}/join`),
     leaveMatch: (matchId) => api.post(`/matches/${matchId}/leave`),
-    updateMatchStatus: (matchId, data) => api.put(`/matches/${matchId}/status`, data),
+    updateMatchStatus: (matchId, data) => api.patch(`/matches/${matchId}/status`, data),
     getNearbyMatches: (params) => api.get('/matches/nearby', { params }),
     searchMatches: (params) => api.get('/matches/search', { params }),
     deleteMatch: (matchId) => api.delete(`/matches/${matchId}`),
+    getUserMatches: () => api.get('/matches/user/matches'),
+    getUserProfile: (userId) => api.get(`/matches/profile/${userId}`),
+    submitReview: (matchId, playerId, data) => api.post(`/reviews/${matchId}/review/${playerId}`, data),
+};
+
+// Review APIs
+export const reviewAPI = {
+    submitReview: (matchId, playerId, data) => api.post(`/reviews/${matchId}/review/${playerId}`, data),
+    getMatchReviews: (matchId) => api.get(`/reviews/${matchId}/reviews`),
 };
 
 // Export api instance for direct use

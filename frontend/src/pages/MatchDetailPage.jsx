@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useMatch } from '../hooks/useMatches';
 import { useAuth } from '../context/AuthContext';
 import { matchAPI, api } from '../services/api';
@@ -334,15 +334,30 @@ export const MatchDetailPage = () => {
                         {/* Host Info */}
                         <Card>
                             <h3 className="text-lg font-bold mb-4">Hosted By</h3>
-                            <div className="flex items-center gap-4">
-                                <img src={match.hostedBy.profilePicture || 'https://via.placeholder.com/60'} alt={match.hostedBy.firstName} className="w-16 h-16 rounded-full object-cover" />
-                                <div className="flex-1">
-                                    <p className="font-semibold text-lg">
-                                        {match.hostedBy.firstName} {match.hostedBy.lastName}
-                                    </p>
-                                    <p className="text-gray-600 text-sm">Hosted {match.hostedBy.matchesHosted} matches</p>
+                            <Link to={`/player/${match.hostedBy._id}`}>
+                                <div className="flex items-center gap-4 mb-4 hover:opacity-80 transition cursor-pointer">
+                                    <img src={match.hostedBy.profilePicture || 'https://via.placeholder.com/60'} alt={match.hostedBy.firstName} className="w-16 h-16 rounded-full object-cover" />
+                                    <div className="flex-1">
+                                        <p className="font-semibold text-lg text-blue-600 hover:text-blue-800">
+                                            {match.hostedBy.firstName} {match.hostedBy.lastName}
+                                        </p>
+                                        <p className="text-gray-600 text-sm">Hosted {match.hostedBy.matchesHosted || 0} matches</p>
+                                        {match.hostedBy.rating && (
+                                            <div className="flex items-center gap-2 mt-2">
+                                                <div className="flex gap-1">
+                                                    {[1, 2, 3, 4, 5].map((star) => (
+                                                        <span key={star} className={`${star <= Math.floor(match.hostedBy.rating) ? 'text-yellow-400' : 'text-gray-300'}`}>
+                                                            ★
+                                                        </span>
+                                                    ))}
+                                                </div>
+                                                <span className="text-xs text-gray-600">{match.hostedBy.rating}/5</span>
+                                                {match.hostedBy.totalReviews && <span className="text-xs text-gray-500">({match.hostedBy.totalReviews})</span>}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
+                            </Link>
                         </Card>
                     </div>
 
@@ -365,15 +380,30 @@ export const MatchDetailPage = () => {
                             {/* Players List */}
                             <div className="space-y-3">
                                 {match.playersJoined.map((player) => (
-                                    <div key={player.player._id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                                        <img src={player.player.profilePicture || 'https://via.placeholder.com/40'} alt={player.player.firstName} className="w-10 h-10 rounded-full object-cover" />
-                                        <div className="flex-1">
-                                            <p className="font-medium text-sm">
-                                                {player.player.firstName} {player.player.lastName}
-                                            </p>
-                                            {player.player._id === match.hostedBy._id && <p className="text-xs text-blue-600 font-semibold">Host</p>}
+                                    <Link key={player.player._id} to={`/player/${player.player._id}`}>
+                                        <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition cursor-pointer">
+                                            <img src={player.player.profilePicture || 'https://via.placeholder.com/40'} alt={player.player.firstName} className="w-10 h-10 rounded-full object-cover" />
+                                            <div className="flex-1">
+                                                <p className="font-medium text-sm text-blue-600 hover:text-blue-800">
+                                                    {player.player.firstName} {player.player.lastName}
+                                                </p>
+                                                {player.player._id === match.hostedBy._id ? (
+                                                    <p className="text-xs text-blue-600 font-semibold">Host</p>
+                                                ) : player.player.rating ? (
+                                                    <div className="flex items-center gap-1 mt-1">
+                                                        <div className="flex gap-0.5">
+                                                            {[1, 2, 3, 4, 5].map((star) => (
+                                                                <span key={star} className={`text-xs ${star <= Math.floor(player.player.rating) ? 'text-yellow-400' : 'text-gray-300'}`}>
+                                                                    ★
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <span className="text-xs text-gray-600">{player.player.rating}/5</span>
+                                                    </div>
+                                                ) : null}
+                                            </div>
                                         </div>
-                                    </div>
+                                    </Link>
                                 ))}
 
                                 {/* Empty Slots */}
@@ -422,15 +452,35 @@ export const MatchDetailPage = () => {
                                         <Button onClick={handleLeaveMatch} variant="danger" className="w-full" disabled={actionLoading}>
                                             {actionLoading ? 'Leaving...' : 'Leave Match'}
                                         </Button>
-                                        {match.status === 'completed' && !reviewedPlayers.includes(match.hostedBy._id) && (
-                                            <Button
-                                                onClick={() => setUserToReview(match.hostedBy)}
-                                                variant="primary"
-                                                className="w-full mt-3"
-                                                disabled={actionLoading}
-                                            >
-                                                Review Host
-                                            </Button>
+                                        {match.status === 'completed' && (
+                                            <div className="space-y-3 mt-3">
+                                                <p className="text-sm text-gray-600 font-medium">Rate your teammates:</p>
+                                                {match.playersJoined.map((player) => {
+                                                    if (player.player._id === user._id) return null; // Don't show self
+                                                    const alreadyReviewed = reviewedPlayers.includes(player.player._id);
+                                                    return (
+                                                        <Button
+                                                            key={player.player._id}
+                                                            onClick={() => setUserToReview(player.player)}
+                                                            variant={alreadyReviewed ? 'secondary' : 'primary'}
+                                                            className="w-full text-sm"
+                                                            disabled={actionLoading || alreadyReviewed}
+                                                        >
+                                                            {alreadyReviewed ? '✓ Reviewed' : `Rate ${player.player.firstName}`}
+                                                        </Button>
+                                                    );
+                                                })}
+                                                {match.hostedBy._id !== user._id && (
+                                                    <Button
+                                                        onClick={() => setUserToReview(match.hostedBy)}
+                                                        variant={reviewedPlayers.includes(match.hostedBy._id) ? 'secondary' : 'primary'}
+                                                        className="w-full text-sm mt-3"
+                                                        disabled={actionLoading || reviewedPlayers.includes(match.hostedBy._id)}
+                                                    >
+                                                        {reviewedPlayers.includes(match.hostedBy._id) ? '✓ Reviewed' : `Rate Host ${match.hostedBy.firstName}`}
+                                                    </Button>
+                                                )}
+                                            </div>
                                         )}
                                     </>
                                 ) : (

@@ -6,12 +6,16 @@ import { errorHandler, notFound } from './middleware/auth.js';
 import authRoutes from './routes/authRoutes.js';
 import matchRoutes from './routes/matchRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
+import { initializeMatchStatusCron } from './services/matchStatusService.js';
 
 // Initialize express app
 const app = express();
 
 // Connect to MongoDB
 connectDB();
+
+// Initialize match status cron job
+initializeMatchStatusCron();
 
 // Middleware
 app.use(cors({

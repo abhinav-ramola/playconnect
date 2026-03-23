@@ -15,7 +15,7 @@ export const completeMatch = async (req, res) => {
         }
 
         // Check if user is the host
-        if (match.hostedBy._id.toString() !== req.user.id) {
+        if (match.hostedBy._id.toString() !== req.user.userId.toString()) {
             return res.status(403).json({ message: 'Only match host can complete the match' });
         }
 
@@ -58,7 +58,7 @@ export const completeMatch = async (req, res) => {
             success: true,
             message: 'Match completed successfully',
             match,
-            playersToReview: allPlayers.filter(id => id.toString() !== req.user.id),
+            playersToReview: allPlayers.filter(id => id.toString() !== req.user.userId),
         });
     } catch (error) {
         res.status(500).json({ message: 'Error completing match', error: error.message });
@@ -76,13 +76,21 @@ export const submitReview = async (req, res) => {
             return res.status(400).json({ message: 'Rating must be between 1 and 5' });
         }
 
-        // Check if match exists and is completed
+        // Check if match exists
         const match = await Match.findById(matchId);
-        if (!match || !match.isCompleted) {
-            return res.status(404).json({ message: 'Match not found or not completed' });
+        if (!match) {
+            return res.status(404).json({ message: 'Match not found' });
         }
 
-        // Check if reviewed player was in the match
+        // Check if match is completed - IMPORTANT: Only allow reviews on completed matches
+        if (match.status !== 'completed') {
+            return res.status(400).json({
+                message: 'Match must be completed before rating players',
+                currentStatus: match.status
+            });
+        }
+
+        // Check if reviewed player was in the match (they must have participated)
         const playerInMatch = match.playersJoined.some(
             p => p.player.toString() === reviewedPlayerId
         ) || match.hostedBy.toString() === reviewedPlayerId;
@@ -92,45 +100,41 @@ export const submitReview = async (req, res) => {
         }
 
         // Check if reviewer is not the same as reviewed player
-        if (req.user.id === reviewedPlayerId) {
+        if (req.user.userId.toString() === reviewedPlayerId.toString()) {
             return res.status(400).json({ message: 'Cannot review yourself' });
         }
 
         // Create or update review
         let review = await Review.findOne({
             match: matchId,
-            reviewedBy: req.user.id,
+            reviewedBy: req.user.userId,
             reviewedPlayer: reviewedPlayerId,
         });
 
         if (review) {
-            // Update existing review
-            review.rating = rating;
-            review.categories = categories;
-            review.comment = comment;
-            review.performance = performance;
-            review.wouldPlayAgain = wouldPlayAgain;
-        } else {
-            // Create new review
-            review = new Review({
-                match: matchId,
-                reviewedBy: req.user.id,
-                reviewedPlayer: reviewedPlayerId,
-                rating,
-                categories,
-                comment,
-                performance,
-                wouldPlayAgain,
-            });
+            // Rating already exists - cannot re-rate
+            return res.status(400).json({ message: 'You have already rated this player in this match' });
         }
+
+        // Create new review
+        review = new Review({
+            match: matchId,
+            reviewedBy: req.user.userId,
+            reviewedPlayer: reviewedPlayerId,
+            rating,
+            categories,
+            comment,
+            performance,
+            wouldPlayAgain,
+        });
 
         await review.save();
 
         // Add review to match's reviews array
         if (!match.reviews.includes(review._id)) {
             match.reviews.push(review._id);
-            if (!match.playersWithReviews.includes(req.user.id)) {
-                match.playersWithReviews.push(req.user.id);
+            if (!match.playersWithReviews.includes(req.user.userId)) {
+                match.playersWithReviews.push(req.user.userId);
             }
         }
 

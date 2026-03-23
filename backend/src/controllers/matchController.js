@@ -1,7 +1,9 @@
 import Match from '../models/Match.js';
 import User from '../models/User.js';
+import Review from '../models/Review.js';
 import { sendSuccess, sendError } from '../utils/response.js';
 import { validateCreateMatch } from '../validators/inputValidator.js';
+import { updateMatchStatus as updateMatchStatusService, updateMatchStatusManually } from '../services/matchStatusService.js';
 
 /**
  * Create a new match
@@ -69,13 +71,19 @@ export const createMatch = async (req, res) => {
 
 /**
  * Get all matches with filters
+ * Returns matches grouped by status (upcoming, completed, cancelled, ongoing)
  */
 export const getAllMatches = async (req, res) => {
     try {
         const { sport, city, status, page = 1, limit = 10 } = req.query;
 
-        // Build filter object
-        const filter = { status: status || 'upcoming' };
+        // Build filter object - allow fetching any status or all if not specified
+        const filter = {};
+
+        // Apply status filter if provided
+        if (status) {
+            filter.status = status;
+        }
 
         if (sport) {
             filter.sport = sport;
@@ -85,17 +93,33 @@ export const getAllMatches = async (req, res) => {
             filter['location.city'] = city;
         }
 
-        // Sort by date
+        // Get all unfinished matches to update their status
+        const upcomingMatches = await Match.find({ status: { $in: ['upcoming', 'ongoing'] } });
+        for (const match of upcomingMatches) {
+            await updateMatchStatusService(match._id);
+        }
+
+        // Get total count before pagination
+        const total = await Match.countDocuments(filter);
         const skip = (page - 1) * limit;
 
-        const matches = await Match.find(filter)
-            .populate('hostedBy', 'firstName lastName profilePicture')
-            .populate('playersJoined.player', 'firstName lastName profilePicture')
-            .sort({ matchDate: 1 })
-            .skip(skip)
-            .limit(parseInt(limit));
+        // Fetch matches sorted by status priority then date
+        let matches = await Match.find(filter)
+            .populate('hostedBy', 'firstName lastName profilePicture rating totalReviews')
+            .populate('playersJoined.player', 'firstName lastName profilePicture rating totalReviews')
+            .lean();
 
-        const total = await Match.countDocuments(filter);
+        // Custom sort: status priority first, then by date
+        const statusPriority = { 'upcoming': 0, 'ongoing': 1, 'completed': 2, 'cancelled': 3 };
+        matches.sort((a, b) => {
+            const statusDiff = (statusPriority[a.status] || 4) - (statusPriority[b.status] || 4);
+            if (statusDiff !== 0) return statusDiff;
+            // Within same status, sort by date descending
+            return new Date(b.matchDate) - new Date(a.matchDate);
+        });
+
+        // Apply pagination
+        matches = matches.slice(skip, skip + parseInt(limit));
 
         return sendSuccess(
             res,
@@ -121,9 +145,13 @@ export const getAllMatches = async (req, res) => {
  */
 export const getMatchById = async (req, res) => {
     try {
+        // Update status first if needed
+        await updateMatchStatusService(req.params.matchId);
+
         const match = await Match.findById(req.params.matchId)
-            .populate('hostedBy', 'firstName lastName profilePicture')
-            .populate('playersJoined.player', 'firstName lastName profilePicture');
+            .populate('hostedBy', 'firstName lastName profilePicture rating totalReviews')
+            .populate('playersJoined.player', 'firstName lastName profilePicture rating totalReviews')
+            .populate('reviews', 'reviewedBy reviewedPlayer rating comment');
 
         if (!match) {
             return sendError(res, 'Match not found', 404);
@@ -215,29 +243,30 @@ export const leaveMatch = async (req, res) => {
 };
 
 /**
- * Update match status
+ * Update match status (PATCH or PUT)
  */
 export const updateMatchStatus = async (req, res) => {
     try {
         const { status } = req.body;
+        const { matchId } = req.params;
 
-        const match = await Match.findById(req.params.matchId);
-
-        if (!match) {
-            return sendError(res, 'Match not found', 404);
+        if (!status) {
+            return sendError(res, 'Status is required', 400);
         }
 
-        // Check if user is the host
-        if (match.hostedBy.toString() !== req.user.userId.toString()) {
-            return sendError(res, 'Only host can update match', 403);
+        // Use the status service for validation and update
+        const result = await updateMatchStatusManually(matchId, status, req.user.userId);
+
+        if (!result.success) {
+            return sendError(res, result.message, result.code);
         }
 
-        match.status = status;
-        await match.save();
-        await match.populate('hostedBy', 'firstName lastName profilePicture');
-        await match.populate('playersJoined.player', 'firstName lastName profilePicture');
+        // Populate the updated match with user details
+        const match = await Match.findById(matchId)
+            .populate('hostedBy', 'firstName lastName profilePicture rating')
+            .populate('playersJoined.player', 'firstName lastName profilePicture rating');
 
-        return sendSuccess(res, match, 'Match status updated successfully');
+        return sendSuccess(res, match, result.message);
     } catch (error) {
         console.error('Update match status error:', error);
         return sendError(res, 'Error updating match status', 500, error.message);
@@ -255,6 +284,12 @@ export const getNearbyMatches = async (req, res) => {
             return sendError(res, 'Longitude and latitude are required', 400);
         }
 
+        // Update statuses first
+        const upcomingMatches = await Match.find({ status: { $in: ['upcoming', 'ongoing'] } });
+        for (const match of upcomingMatches) {
+            await updateMatchStatusService(match._id);
+        }
+
         const matches = await Match.find({
             'location.coordinates': {
                 $near: {
@@ -267,8 +302,8 @@ export const getNearbyMatches = async (req, res) => {
             },
             status: 'upcoming',
         })
-            .populate('hostedBy', 'firstName lastName profilePicture')
-            .populate('playersJoined.player', 'firstName lastName profilePicture');
+            .populate('hostedBy', 'firstName lastName profilePicture rating totalReviews')
+            .populate('playersJoined.player', 'firstName lastName profilePicture rating totalReviews');
 
         return sendSuccess(res, matches, 'Nearby matches retrieved successfully');
     } catch (error) {
@@ -296,8 +331,8 @@ export const searchMatches = async (req, res) => {
             ],
             status: 'upcoming',
         })
-            .populate('hostedBy', 'firstName lastName profilePicture')
-            .populate('playersJoined.player', 'firstName lastName profilePicture');
+            .populate('hostedBy', 'firstName lastName profilePicture rating totalReviews')
+            .populate('playersJoined.player', 'firstName lastName profilePicture rating totalReviews');
 
         return sendSuccess(res, matches, 'Search results retrieved successfully');
     } catch (error) {
@@ -380,5 +415,110 @@ export const deleteMatch = async (req, res) => {
     } catch (error) {
         console.error('Delete match error:', error);
         return sendError(res, 'Error deleting match', 500, error.message);
+    }
+};
+
+/**
+ * Get user's match history
+ */
+export const getUserMatches = async (req, res) => {
+    try {
+        const userId = req.user?.userId || req.params.userId;
+
+        if (!userId) {
+            return sendError(res, 'User ID is required', 400);
+        }
+
+        // Find matches where user is host or player
+        const matches = await Match.find({
+            $or: [
+                { hostedBy: userId },
+                { 'playersJoined.player': userId },
+            ],
+        })
+            .populate('hostedBy', 'firstName lastName profilePicture rating')
+            .populate('playersJoined.player', 'firstName lastName profilePicture rating')
+            .sort({ matchDate: -1 });
+
+        return sendSuccess(res, matches, 'User matches retrieved successfully');
+    } catch (error) {
+        console.error('Get user matches error:', error);
+        return sendError(res, 'Error retrieving user matches', 500, error.message);
+    }
+};
+
+/**
+ * Get user profile with stats
+ */
+export const getUserProfile = async (req, res) => {
+    try {
+        const { userId } = req.params;
+
+        const user = await User.findById(userId)
+            .populate('reviewsReceived')
+            .populate('matchHistory.match');
+
+        if (!user) {
+            return sendError(res, 'User not found', 404);
+        }
+
+        // Get all reviews for this user
+        const reviews = await Review.find({ reviewedPlayer: userId })
+            .populate('reviewedBy', 'firstName lastName profilePicture')
+            .populate('match', 'title sport matchDate')
+            .sort({ createdAt: -1 });
+
+        // Get match history
+        const matchHistory = await Match.find({
+            $or: [
+                { hostedBy: userId },
+                { 'playersJoined.player': userId },
+            ],
+        })
+            .populate('hostedBy', 'firstName lastName')
+            .sort({ matchDate: -1 })
+            .limit(10);
+
+        // Calculate statistics
+        const stats = {
+            totalMatches: user.matchesCompleted || 0,
+            totalHosted: user.matchesHosted || 0,
+            totalJoined: user.matchesJoined || 0,
+            averageRating: user.rating || 0,
+            totalReviews: user.totalReviews || 0,
+            positiveReviews: reviews.filter(r => r.rating >= 4).length,
+            wouldPlayAgainCount: reviews.filter(r => r.wouldPlayAgain).length,
+            achievements: user.achievements || [],
+        };
+
+        const profileData = {
+            _id: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            profilePicture: user.profilePicture,
+            bio: user.bio,
+            skillLevel: user.skillLevel,
+            sportPreferences: user.sportPreferences,
+            location: user.location,
+            stats,
+            reviews: reviews.map(r => ({
+                _id: r._id,
+                rating: r.rating,
+                categories: r.categories,
+                comment: r.comment,
+                performance: r.performance,
+                wouldPlayAgain: r.wouldPlayAgain,
+                reviewedBy: r.reviewedBy,
+                match: r.match,
+                createdAt: r.createdAt,
+            })),
+            matchHistory,
+        };
+
+        return sendSuccess(res, profileData, 'User profile retrieved successfully');
+    } catch (error) {
+        console.error('Get user profile error:', error);
+        return sendError(res, 'Error retrieving user profile', 500, error.message);
     }
 };

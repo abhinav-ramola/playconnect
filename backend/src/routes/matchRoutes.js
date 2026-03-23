@@ -10,20 +10,29 @@ import {
     getNearbyMatches,
     searchMatches,
     deleteMatch,
+    getUserMatches,
+    getUserProfile,
 } from '../controllers/matchController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Protected routes (more specific - must come before generic ones)
+router.get('/user/matches', authenticateToken, getUserMatches);
+router.post('/', authenticateToken, createMatch);
+
 // Public routes
-router.get('/', getAllMatches);
 router.get('/search', searchMatches);
 router.get('/nearby', getNearbyMatches);
-router.get('/:matchId', getMatchById);
+router.get('/profile/:userId', getUserProfile);
 
-// Protected routes
-router.post('/', authenticateToken, createMatch);
+// Main list (must come before :matchId routes)
+router.get('/', getAllMatches);
+
+// Protected routes (must come after specific routes)
+router.get('/:matchId', getMatchById);
 router.put('/:matchId', authenticateToken, updateMatch);
+router.patch('/:matchId/status', authenticateToken, updateMatchStatus);
 router.put('/:matchId/status', authenticateToken, updateMatchStatus);
 router.post('/:matchId/join', authenticateToken, joinMatch);
 router.post('/:matchId/leave', authenticateToken, leaveMatch);
