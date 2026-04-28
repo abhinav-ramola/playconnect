@@ -57,6 +57,7 @@ export const matchAPI = {
     getUserMatches: () => api.get('/matches/user/matches'),
     getUserProfile: (userId) => api.get(`/matches/profile/${userId}`),
     submitReview: (matchId, playerId, data) => api.post(`/reviews/${matchId}/review/${playerId}`, data),
+    checkAvailability: (data) => api.post('/matches/check-availability', data),
 };
 
 // Review APIs

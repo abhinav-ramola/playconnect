@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { matchAPI } from '../services/api';
+import MapPicker from '../components/MapPicker';
 import { Card, Button, Input, Select, Alert, Spinner } from '../components/UI';
 import { ArrowLeft } from 'lucide-react';
 
@@ -15,21 +16,28 @@ export const CreateMatchPage = () => {
         description: '',
         sport: '',
         playersNeeded: '',
-        matchDate: '',
-        matchType: 'casual',
-        skillLevel: 'beginner',
+        venue: '',
         location: {
             address: '',
             city: '',
             longitude: 0,
             latitude: 0,
         },
+        date: '',
+        startTime: '',
+        endTime: '',
+        matchType: 'casual',
+        skillLevel: 'beginner',
         duration: 120,
         ground: '',
         equipment: '',
         notes: '',
         entryFee: 0,
     });
+
+    // Venue availability state
+    const [availability, setAvailability] = useState(null); // null | true | false
+    const [checking, setChecking] = useState(false);
 
     const sports = [
         { value: 'cricket', label: '🏏 Cricket' },
@@ -55,7 +63,6 @@ export const CreateMatchPage = () => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-
         if (name.includes('location.')) {
             const field = name.split('.')[1];
             setFormData((prev) => ({
@@ -72,6 +79,42 @@ export const CreateMatchPage = () => {
             }));
         }
     };
+
+    // MapPicker handler
+    const handleMapChange = ({ latitude, longitude }) => {
+        setFormData((prev) => ({
+            ...prev,
+            location: {
+                ...prev.location,
+                latitude,
+                longitude,
+            },
+        }));
+    };
+
+    // Check venue availability when venue/date/startTime/endTime changes
+    useEffect(() => {
+        const check = async () => {
+            if (!formData.venue || !formData.date || !formData.startTime || !formData.endTime) {
+                setAvailability(null);
+                return;
+            }
+            setChecking(true);
+            try {
+                const res = await matchAPI.checkAvailability({
+                    venue: formData.venue,
+                    date: formData.date,
+                    startTime: formData.startTime,
+                    endTime: formData.endTime,
+                });
+                setAvailability(res.data.available);
+            } catch {
+                setAvailability(null);
+            }
+            setChecking(false);
+        };
+        check();
+    }, [formData.venue, formData.date, formData.startTime, formData.endTime]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -91,8 +134,8 @@ export const CreateMatchPage = () => {
             setError('Players needed is required');
             return;
         }
-        if (!formData.matchDate) {
-            setError('Match date is required');
+        if (!formData.venue.trim()) {
+            setError('Venue is required');
             return;
         }
         if (!formData.location.address.trim()) {
@@ -103,13 +146,28 @@ export const CreateMatchPage = () => {
             setError('City is required');
             return;
         }
+        if (!formData.date) {
+            setError('Date is required');
+            return;
+        }
+        if (!formData.startTime) {
+            setError('Start time is required');
+            return;
+        }
+        if (!formData.endTime) {
+            setError('End time is required');
+            return;
+        }
+        if (availability === false) {
+            setError('Venue is already booked for this slot');
+            return;
+        }
 
         setLoading(true);
 
         try {
             const response = await matchAPI.createMatch({
                 ...formData,
-                matchDate: new Date(formData.matchDate).toISOString(),
             });
 
             setSuccess('Match created successfully!');
@@ -183,21 +241,23 @@ export const CreateMatchPage = () => {
                             </div>
                         </div>
 
-                        {/* Location */}
+                        {/* Location & Venue */}
                         <div>
-                            <h3 className="text-lg font-semibold text-gray-800 mb-4">Location Details</h3>
+                            <h3 className="text-lg font-semibold text-gray-800 mb-4">Venue & Location Details</h3>
+
+                            <Input label="Venue Name" name="venue" value={formData.venue} onChange={handleChange} placeholder="e.g., Central Park Ground" required />
 
                             <Input label="Address" name="location.address" value={formData.location.address} onChange={handleChange} placeholder="Street address" required />
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <Input label="City" name="location.city" value={formData.location.city} onChange={handleChange} placeholder="City name" required />
-                                <Input label="Ground/Venue Name" name="ground" value={formData.ground} onChange={handleChange} placeholder="e.g., Central Park" />
+                                <Input label="Ground (optional)" name="ground" value={formData.ground} onChange={handleChange} placeholder="e.g., Central Park" />
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <Input label="Latitude (optional)" type="number" step="0.0001" name="location.latitude" value={formData.location.latitude} onChange={handleChange} placeholder="40.7128" />
-
-                                <Input label="Longitude (optional)" type="number" step="0.0001" name="location.longitude" value={formData.location.longitude} onChange={handleChange} placeholder="-74.0060" />
+                            <div className="my-4">
+                                <label className="block text-sm font-medium text-gray-700 mb-2">Pick Location on Map</label>
+                                <MapPicker value={{ latitude: formData.location.latitude, longitude: formData.location.longitude }} onChange={handleMapChange} height={300} />
+                                <div className="text-xs text-gray-500 mt-2">Latitude: {formData.location.latitude} | Longitude: {formData.location.longitude}</div>
                             </div>
                         </div>
 
@@ -205,7 +265,18 @@ export const CreateMatchPage = () => {
                         <div>
                             <h3 className="text-lg font-semibold text-gray-800 mb-4">Date & Time</h3>
 
-                            <Input label="Match Date & Time" type="datetime-local" name="matchDate" value={formData.matchDate} onChange={handleChange} required />
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <Input label="Date" type="date" name="date" value={formData.date} onChange={handleChange} required />
+                                <Input label="Start Time" type="time" name="startTime" value={formData.startTime} onChange={handleChange} required />
+                                <Input label="End Time" type="time" name="endTime" value={formData.endTime} onChange={handleChange} required />
+                            </div>
+
+                            {/* Venue Availability Status */}
+                            <div className="mt-2">
+                                {checking && <span className="text-blue-500 text-sm">Checking availability...</span>}
+                                {availability === true && <span className="text-green-600 text-sm">Available ✅</span>}
+                                {availability === false && <span className="text-red-600 text-sm">Booked ❌</span>}
+                            </div>
                         </div>
 
                         {/* Additional Details */}
@@ -231,7 +302,7 @@ export const CreateMatchPage = () => {
 
                         {/* Buttons */}
                         <div className="flex gap-4 pt-6">
-                            <Button type="submit" variant="primary" className="flex-1 font-semibold" disabled={loading}>
+                            <Button type="submit" variant="primary" className="flex-1 font-semibold" disabled={loading || availability === false || checking}>
                                 {loading ? <Spinner size="sm" /> : '🎯 Create Match'}
                             </Button>
                             <Button type="button" variant="secondary" className="flex-1" onClick={() => navigate('/dashboard')}>

@@ -1,3 +1,37 @@
+/**
+ * Check venue availability for a given date and time slot
+ */
+export const checkAvailability = async (req, res) => {
+    try {
+        const { venue, date, startTime, endTime } = req.body;
+        if (!venue || !date || !startTime || !endTime) {
+            return sendError(res, 'Missing required fields', 400);
+        }
+
+        // Find matches at the same venue and date
+        const matches = await Match.find({
+            venue,
+            date: new Date(date)
+        });
+
+        // Check for time overlap
+        const isOverlap = matches.some(match => {
+            // Compare time strings (assume format 'HH:mm')
+            const newStart = startTime;
+            const newEnd = endTime;
+            const existingStart = match.startTime;
+            const existingEnd = match.endTime;
+            return (newStart < existingEnd) && (newEnd > existingStart);
+        });
+
+        if (isOverlap) {
+            return res.json({ available: false });
+        }
+        return res.json({ available: true });
+    } catch (err) {
+        return sendError(res, 'Error checking availability', 500, err);
+    }
+};
 import Match from '../models/Match.js';
 import User from '../models/User.js';
 import Review from '../models/Review.js';
@@ -10,19 +44,34 @@ import { updateMatchStatus as updateMatchStatusService, updateMatchStatusManuall
  */
 export const createMatch = async (req, res) => {
     try {
-        const { title, description, sport, playersNeeded, matchDate, location, matchType, skillLevel, entryFee, duration, ground, equipment, notes } = req.body;
+        const { title, description, sport, playersNeeded, venue, location, date, startTime, endTime, matchType, skillLevel, entryFee, duration, ground, equipment, notes } = req.body;
 
         // Validate input
         const validation = validateCreateMatch({
             title,
             sport,
             location,
-            matchDate,
+            date,
             playersNeeded,
+            venue,
+            startTime,
+            endTime,
         });
 
         if (!validation.isValid) {
             return sendError(res, 'Validation failed', 400, validation.errors);
+        }
+
+        // Check venue availability before creating
+        const existingMatches = await Match.find({
+            venue,
+            date: new Date(date)
+        });
+        const isOverlap = existingMatches.some(match => {
+            return (startTime < match.endTime) && (endTime > match.startTime);
+        });
+        if (isOverlap) {
+            return sendError(res, 'Venue is already booked for this time slot', 409);
         }
 
         // Create new match
@@ -31,8 +80,7 @@ export const createMatch = async (req, res) => {
             description,
             sport,
             playersNeeded,
-            matchDate: new Date(matchDate),
-            hostedBy: req.user.userId,
+            venue,
             location: {
                 ...location,
                 coordinates: {
@@ -40,6 +88,9 @@ export const createMatch = async (req, res) => {
                     coordinates: [location.longitude || 0, location.latitude || 0],
                 },
             },
+            date: new Date(date),
+            startTime,
+            endTime,
             matchType,
             skillLevel,
             entryFee: entryFee || 0,

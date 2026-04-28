@@ -58,7 +58,12 @@ const matchSchema = new mongoose.Schema(
             },
         ],
 
-        // Location
+
+        // Venue & Location
+        venue: {
+            type: String,
+            required: [true, 'Venue name is required'],
+        },
         location: {
             address: {
                 type: String,
@@ -81,10 +86,19 @@ const matchSchema = new mongoose.Schema(
             },
         },
 
+
         // Date & Time
-        matchDate: {
+        date: {
             type: Date,
             required: [true, 'Please provide match date'],
+        },
+        startTime: {
+            type: String,
+            required: [true, 'Please provide start time'],
+        },
+        endTime: {
+            type: String,
+            required: [true, 'Please provide end time'],
         },
         duration: {
             type: Number, // in minutes
@@ -171,12 +185,13 @@ const matchSchema = new mongoose.Schema(
     }
 );
 
+
 // Create geospatial index for location-based queries
 matchSchema.index({ 'location.coordinates': '2dsphere' });
-
+// Index for venue/date for availability check
+matchSchema.index({ venue: 1, date: 1 });
 // Index for filtering by status and date
-matchSchema.index({ status: 1, matchDate: 1 });
-
+matchSchema.index({ status: 1, date: 1 });
 // Index for filtering by sport
 matchSchema.index({ sport: 1 });
 

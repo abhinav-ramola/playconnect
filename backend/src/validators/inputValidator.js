@@ -74,12 +74,24 @@ export const validateCreateMatch = (data) => {
         errors.sport = 'Sport type is required';
     }
 
+    if (!data.venue || data.venue.trim() === '') {
+        errors.venue = 'Venue is required';
+    }
+
     if (!data.location || !data.location.address || data.location.address.trim() === '') {
         errors.location = 'Location address is required';
     }
 
-    if (!data.matchDate) {
-        errors.matchDate = 'Match date is required';
+    if (!data.date) {
+        errors.date = 'Match date is required';
+    }
+
+    if (!data.startTime) {
+        errors.startTime = 'Start time is required';
+    }
+
+    if (!data.endTime) {
+        errors.endTime = 'End time is required';
     }
 
     if (!data.playersNeeded || data.playersNeeded < 1) {

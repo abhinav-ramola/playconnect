@@ -4,6 +4,7 @@ import { useMatch } from '../hooks/useMatches';
 import { useAuth } from '../context/AuthContext';
 import { matchAPI, api } from '../services/api';
 import { Card, Button, Spinner, Alert, Input, Select } from '../components/UI';
+import MapPicker from '../components/MapPicker';
 import { MatchCompletionForm, PlayerReviewForm } from '../components/ReviewComponents';
 import { MapPin, Users, Calendar, Trophy, ArrowLeft, Edit2, X, CheckCircle } from 'lucide-react';
 
@@ -281,15 +282,41 @@ export const MatchDetailPage = () => {
                                         <Calendar size={20} className="text-blue-600 mt-1" />
                                         <div>
                                             <p className="text-sm text-gray-600">Date & Time</p>
-                                            <p className="font-semibold">{formatDate(match.matchDate)}</p>
+                                            <p className="font-semibold">{formatDate(match.date || match.matchDate)}</p>
+                                            {match.startTime && match.endTime && (
+                                                <span className="text-gray-600 text-sm">{match.startTime} - {match.endTime}</span>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-start gap-3">
                                         <MapPin size={20} className="text-blue-600 mt-1" />
                                         <div>
                                             <p className="text-sm text-gray-600">Location</p>
-                                            <p className="font-semibold">{match.location.address}</p>
-                                            <p className="text-gray-600">{match.location.city}</p>
+                                            <p className="font-semibold">{match.venue || match.ground}</p>
+                                            <p className="text-gray-600">{match.location?.address}</p>
+                                            <p className="text-gray-600">{match.location?.city}</p>
+                                            {match.location?.coordinates?.coordinates && (
+                                                <>
+                                                    <div className="my-2">
+                                                        <MapPicker
+                                                            value={{
+                                                                latitude: match.location.coordinates.coordinates[1],
+                                                                longitude: match.location.coordinates.coordinates[0],
+                                                            }}
+                                                            onChange={() => {}}
+                                                            height={220}
+                                                        />
+                                                    </div>
+                                                    <a
+                                                        href={`https://www.google.com/maps/search/?api=1&query=${match.location.coordinates.coordinates[1]},${match.location.coordinates.coordinates[0]}`}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="inline-block mt-2 text-blue-600 hover:underline text-sm"
+                                                    >
+                                                        View on Google Maps
+                                                    </a>
+                                                </>
+                                            )}
                                         </div>
                                     </div>
                                     {match.ground && (

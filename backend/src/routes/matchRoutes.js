@@ -12,10 +12,15 @@ import {
     deleteMatch,
     getUserMatches,
     getUserProfile,
+    checkAvailability,
 } from '../controllers/matchController.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
+
+
+// Venue availability check
+router.post('/check-availability', authenticateToken, checkAvailability);
 
 // Protected routes (more specific - must come before generic ones)
 router.get('/user/matches', authenticateToken, getUserMatches);
